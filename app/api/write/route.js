@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { db, getRole } from '@/lib/server';
+import { computeStandings, matchWinner } from '@/lib/standings';
 
 export const dynamic = 'force-dynamic';
 
 // Actions an umpire may perform; everything else is admin-only.
-const UMPIRE_ACTIONS = ['createMatch', 'addBall', 'undoBall', 'startSecondInnings', 'finishMatch'];
+const UMPIRE_ACTIONS = ['createMatch', 'startMatch', 'addBall', 'undoBall', 'startSecondInnings', 'finishMatch'];
 
 const clean = (s) => String(s || '').trim().slice(0, 60);
 const int = (n, d = 0) => (Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : d);
@@ -60,6 +61,54 @@ export async function POST(request) {
         if (error) throw error;
         return ok({ id: data.id });
       }
+      case 'startMatch': {
+        const { data: m, error: me } = await sb.from('matches').select('*').eq('id', body.match_id).single();
+        if (me) throw me;
+        if (m.status !== 'scheduled') return fail('Match already started');
+        if (![m.team_a, m.team_b].includes(body.batting_first)) return fail('Pick who bats first');
+        const overs = int(body.overs, 0), pps = int(body.players_per_side, 0);
+        if (overs < 1 || overs > 50) return fail('Overs must be 1-50');
+        if (pps < 2 || pps > 15) return fail('Players per side must be 2-15');
+        const umpire = clean(body.umpire);
+        check(await sb.from('matches').update({ status: 'live', batting_first: body.batting_first, overs, players_per_side: pps, umpire: umpire || null }).eq('id', m.id));
+        return ok();
+      }
+      case 'generateKnockouts': {
+        const [teams, players, matches, balls] = await Promise.all([
+          sb.from('teams').select('*'), sb.from('players').select('*'), sb.from('matches').select('*'),
+          sb.from('balls').select('match_id,innings,runs_off_bat,extra_runs,is_legal,wicket_type'),
+        ]);
+        for (const r of [teams, players, matches, balls]) check(r);
+        const M = matches.data;
+        if (body.stage === 'semi') {
+          if (M.some((m) => m.stage === 'semi')) return fail('Semifinals already created');
+          const left = M.filter((m) => m.stage === 'group' && m.status !== 'completed').length;
+          if (left) return fail(`${left} group match${left === 1 ? '' : 'es'} still to be completed`);
+          const top = (g) => {
+            const ts = teams.data.filter((t) => t.group_name === g);
+            const gm = M.filter((m) => m.stage === 'group' && ts.some((t) => t.id === m.team_a));
+            return computeStandings(ts, players.data, gm, balls.data).slice(0, 2).map((r) => r.id);
+          };
+          const [a1, a2] = top('A'), [b1, b2] = top('B');
+          if (!a1 || !a2 || !b1 || !b2) return fail('Groups are not set up');
+          const base = { overs: 6, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'semi' };
+          check(await sb.from('matches').insert([
+            { ...base, team_a: a1, team_b: b2, match_no: 13, play_order: 13 },
+            { ...base, team_a: b1, team_b: a2, match_no: 14, play_order: 14 },
+          ]));
+          return ok();
+        }
+        if (body.stage === 'final') {
+          if (M.some((m) => m.stage === 'final')) return fail('Final already created');
+          const semis = M.filter((m) => m.stage === 'semi').sort((x, y) => x.match_no - y.match_no);
+          if (semis.length < 2 || semis.some((m) => m.status !== 'completed')) return fail('Both semifinals must be completed');
+          const w = semis.map((m) => matchWinner(m, balls.data));
+          if (w.some((x) => !x)) return fail('A semifinal has no winner (tie): re-finish it and pick the tie-breaker winner');
+          check(await sb.from('matches').insert({ overs: 6, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'final', team_a: w[0], team_b: w[1], match_no: 15, play_order: 15 }));
+          return ok();
+        }
+        return fail('Unknown stage');
+      }
       case 'addBall': {
         const { data: m, error: me } = await sb.from('matches').select('*').eq('id', body.match_id).single();
         if (me) throw me;
@@ -92,11 +141,11 @@ export async function POST(request) {
         return ok();
       }
       case 'finishMatch': {
-        check(await sb.from('matches').update({ status: 'completed', result: clean(body.result) }).eq('id', body.match_id));
+        check(await sb.from('matches').update({ status: 'completed', result: clean(body.result), winner_id: body.winner_id || null }).eq('id', body.match_id));
         return ok();
       }
       case 'reopenMatch': {
-        check(await sb.from('matches').update({ status: 'live', result: null }).eq('id', body.match_id));
+        check(await sb.from('matches').update({ status: 'live', result: null, winner_id: null }).eq('id', body.match_id));
         return ok();
       }
       case 'deleteMatch': {

@@ -18,6 +18,8 @@ export default function MatchPage() {
   const [pick, setPick] = useState({});
   const [wk, setWk] = useState(null); // wicket dialog state
   const [showCard, setShowCard] = useState(false);
+  const [sf, setSf] = useState({}); // start-match form for scheduled fixtures
+  const [winnerPick, setWinnerPick] = useState('');
   const [swapped, setSwapped] = useState(false); // umpire override: flip strike before the next ball
 
   const load = useCallback(() => api(`/api/match?id=${id}`).then((d) => { setData(d); setError(''); }).catch((e) => setError(e.message)), [id]);
@@ -46,6 +48,40 @@ export default function MatchPage() {
   if (!view) return <p className={error ? 'error' : 'muted'}>{error || 'Loading…'}</p>;
   const { balls, tName, pName, teamPlayers, bats, squad, i1, i2 } = view;
   const bpo = m.balls_per_over;
+  const grp = data.teams.find((t) => t.id === m.team_a)?.group_name;
+  const stageLabel = m.stage === 'semi' ? `Semifinal ${m.match_no - 12}` : m.stage === 'final' ? 'Final'
+    : m.stage === 'group' ? `Match ${m.match_no} · Group ${grp || ''}` : 'Friendly';
+
+  if (m.status === 'scheduled') {
+    const f = { bf: sf.bf ?? '', overs: sf.overs ?? m.overs, pps: sf.pps ?? m.players_per_side, umpire: sf.umpire ?? (m.umpire || '') };
+    const setF = (k, v) => setSf({ ...sf, [k]: v });
+    return (
+      <>
+        <div className="row between"><span className="pill">UPCOMING</span><span className="muted small">{stageLabel}</span></div>
+        <section className="card"><h2>{tName(m.team_a)} vs {tName(m.team_b)}</h2></section>
+        {error && <p className="error">{error}</p>}
+        {authed ? (
+          <form className="card stack" onSubmit={(e) => { e.preventDefault(); act({ action: 'startMatch', match_id: m.id, batting_first: f.bf, overs: f.overs, players_per_side: f.pps, umpire: f.umpire }); }}>
+            <b>Start match</b>
+            <label>Who bats first (after toss)?
+              <select value={f.bf} onChange={(e) => setF('bf', e.target.value)}>
+                <option value="">Select…</option>
+                <option value={m.team_a}>{tName(m.team_a)}</option>
+                <option value={m.team_b}>{tName(m.team_b)}</option>
+              </select>
+            </label>
+            <div className="row">
+              <label className="grow">Overs per innings<input type="number" min="1" max="50" value={f.overs} onChange={(e) => setF('overs', e.target.value)} /></label>
+              <label className="grow">Players per side<input type="number" min="2" max="15" value={f.pps} onChange={(e) => setF('pps', e.target.value)} /></label>
+            </div>
+            <label>Umpire (optional)<input value={f.umpire} onChange={(e) => setF('umpire', e.target.value)} placeholder="Umpire name" /></label>
+            <button className="btn primary" disabled={busy || !f.bf}>Start match</button>
+          </form>
+        ) : <p className="muted">This match hasn't started yet. Umpires: log in (top right) to start it.</p>}
+        {isAdmin && <button className="link danger small" style={{ alignSelf: 'flex-start' }} onClick={() => confirm('Delete this fixture?') && write({ action: 'deleteMatch', match_id: m.id }).then(() => (location.href = '/'))}>Delete match</button>}
+      </>
+    );
+  }
   const n = m.current_innings;
   const cur = view.inn[n];
   const batTeam = bats[n], bowlTeam = bats[n === 1 ? 2 : 1];
@@ -95,6 +131,10 @@ export default function MatchPage() {
 
   const bfName = tName(bats[1]), chName = tName(bats[2]);
   const finishText = matchResult({ i1, i2, battingFirstName: bfName, chasingName: chName, squadSize: squad(bats[2]) });
+  const isTie = i2.runs === i1.runs;
+  const needsPick = isTie && m.stage !== 'friendly';
+  const winnerId = i2.runs > i1.runs ? bats[2] : i1.runs > i2.runs ? bats[1] : winnerPick || null;
+  const resultText = needsPick && winnerPick ? `${tName(winnerPick)} won (tie-breaker)` : finishText;
   const ballsLeft = m.overs * bpo - i2.legal;
   const wkTypes = mode === 'noball' ? ['runout'] : mode === 'wide' ? ['stumped', 'runout', 'hitwicket'] : ['bowled', 'caught', 'lbw', 'stumped', 'runout', 'hitwicket'];
 
@@ -114,7 +154,7 @@ export default function MatchPage() {
     <>
       <div className="row between">
         <span className={`pill ${m.status}`}>{live ? '● LIVE' : 'FINISHED'}</span>
-        <span className="muted small">{m.overs} overs · {bpo} balls/over</span>
+        <span className="muted small">{stageLabel} · {m.overs} ov · {bpo} balls/over</span>
       </div>
       {m.umpire && <div className="muted small">Umpire: <b>{m.umpire}</b></div>}
 
@@ -191,7 +231,8 @@ export default function MatchPage() {
       {authed && live && n === 2 && i2.complete && (
         <div className="card stack">
           <b>{finishText}</b>
-          <button className="btn primary" disabled={busy} onClick={() => act({ action: 'finishMatch', match_id: m.id, result: finishText })}>Finish match</button>
+          {needsPick && <Sel label="Who won the tie-breaker (super over)?" value={winnerPick} onChange={setWinnerPick} options={[{ id: bats[1], name: bfName }, { id: bats[2], name: chName }]} />}
+          <button className="btn primary" disabled={busy || (needsPick && !winnerPick)} onClick={() => act({ action: 'finishMatch', match_id: m.id, result: resultText, winner_id: winnerId })}>Finish match</button>
         </div>
       )}
 
@@ -232,7 +273,7 @@ export default function MatchPage() {
           {live
             ? <span className="row">
               {n === 1 && <button className="link" disabled={busy} onClick={() => confirm(`End innings at ${i1.runs}/${i1.wickets}? ${tName(bats[2])} will need ${i1.runs + 1} to win.`) && act({ action: 'startSecondInnings', match_id: m.id })}>End innings</button>}
-              {n === 2 && <button className="link" disabled={busy} onClick={() => confirm(`End innings now? Result: ${finishText}`) && act({ action: 'finishMatch', match_id: m.id, result: finishText })}>End innings</button>}
+              {n === 2 && <button className="link" disabled={busy || (needsPick && !winnerPick)} onClick={() => confirm(`End innings now? Result: ${resultText}`) && act({ action: 'finishMatch', match_id: m.id, result: resultText, winner_id: winnerId })}>End innings</button>}
               <button className="link" onClick={() => confirm('End this match now?') && act({ action: 'finishMatch', match_id: m.id, result: n === 2 && i2.count > 0 ? finishText : 'Match abandoned' })}>End match early</button></span>
             : isAdmin ? <button className="link" onClick={() => act({ action: 'reopenMatch', match_id: m.id })}>Reopen match</button> : <span />}
           {isAdmin && <button className="link danger" onClick={() => confirm('Delete this match and all its balls?') && write({ action: 'deleteMatch', match_id: m.id }).then(() => (location.href = '/'))}>Delete match</button>}

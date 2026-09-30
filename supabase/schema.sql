@@ -2,6 +2,7 @@
 create table teams (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
+  group_name text,
   created_at timestamptz default now()
 );
 
@@ -19,11 +20,15 @@ create table matches (
   overs int not null,
   balls_per_over int not null default 3,
   players_per_side int not null,
-  batting_first uuid not null references teams(id),
-  status text not null default 'live' check (status in ('live','completed')),
+  batting_first uuid references teams(id),
+  status text not null default 'live' check (status in ('scheduled','live','completed')),
   current_innings int not null default 1,
   result text,
   umpire text,
+  match_no int,
+  play_order int,
+  stage text not null default 'friendly',
+  winner_id uuid references teams(id),
   created_at timestamptz default now()
 );
 
