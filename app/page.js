@@ -49,6 +49,7 @@ export default function Home() {
             </div>
             <div className="row between"><b>{team(first)}</b><span>{s1.runs}/{s1.wkts} <span className="muted small">({fmtOvers(s1.legal, m.balls_per_over)})</span></span></div>
             <div className="row between"><b>{team(second)}</b><span>{s2.any || m.current_innings === 2 ? <>{s2.runs}/{s2.wkts} <span className="muted small">({fmtOvers(s2.legal, m.balls_per_over)})</span></> : <span className="muted small">yet to bat</span>}</span></div>
+            {m.umpire && <div className="muted small">Umpire: {m.umpire}</div>}
             {m.result && <div className="result">{m.result}</div>}
             {isAdmin && (
               <button className="link danger small" style={{ alignSelf: 'flex-start' }} onClick={async (e) => {

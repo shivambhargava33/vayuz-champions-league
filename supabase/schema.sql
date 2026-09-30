@@ -23,6 +23,7 @@ create table matches (
   status text not null default 'live' check (status in ('live','completed')),
   current_innings int not null default 1,
   result text,
+  umpire text,
   created_at timestamptz default now()
 );
 

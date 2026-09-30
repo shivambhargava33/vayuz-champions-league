@@ -116,6 +116,7 @@ export default function MatchPage() {
         <span className={`pill ${m.status}`}>{live ? '● LIVE' : 'FINISHED'}</span>
         <span className="muted small">{m.overs} overs · {bpo} balls/over</span>
       </div>
+      {m.umpire && <div className="muted small">Umpire: <b>{m.umpire}</b></div>}
 
       {/* Scoreboard */}
       <section className="card score">

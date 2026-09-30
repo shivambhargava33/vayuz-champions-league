@@ -8,7 +8,7 @@ export default function NewMatch() {
   const { authed } = useAuth();
   const router = useRouter();
   const [data, setData] = useState(null);
-  const [f, setF] = useState({ team_a: '', team_b: '', batting_first: '', overs: 6, players_per_side: 6 });
+  const [f, setF] = useState({ team_a: '', team_b: '', batting_first: '', overs: 6, players_per_side: 6, umpire: '' });
   const [error, setError] = useState('');
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
 
@@ -57,6 +57,10 @@ export default function NewMatch() {
           <input type="number" min="2" max="15" value={f.players_per_side} onChange={(e) => set('players_per_side', e.target.value)} />
         </label>
       </div>
+      <label>Umpire (optional)
+        <input list="umpires" value={f.umpire} onChange={(e) => set('umpire', e.target.value)} placeholder="Type or pick a name" />
+        <datalist id="umpires">{[...new Set(data.matches.map((x) => x.umpire).filter(Boolean))].map((u) => <option key={u} value={u} />)}</datalist>
+      </label>
       <p className="muted small">Each over has 3 balls. An innings ends when all but one player are out, overs are done, or the target is chased.</p>
       {error && <p className="error">{error}</p>}
       <button className="btn primary" disabled={!f.team_a || !f.team_b || !f.batting_first}>Start match</button>

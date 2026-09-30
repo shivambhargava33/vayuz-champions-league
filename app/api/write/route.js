@@ -53,8 +53,9 @@ export async function POST(request) {
         const overs = int(body.overs, 0), pps = int(body.players_per_side, 0);
         if (overs < 1 || overs > 50) return fail('Overs must be 1-50');
         if (pps < 2 || pps > 15) return fail('Players per side must be 2-15');
+        const umpire = clean(body.umpire);
         const { data, error } = await sb.from('matches')
-          .insert({ team_a, team_b, batting_first, overs, players_per_side: pps, balls_per_over: 3 })
+          .insert({ team_a, team_b, batting_first, overs, players_per_side: pps, balls_per_over: 3, ...(umpire && { umpire }) })
           .select().single();
         if (error) throw error;
         return ok({ id: data.id });
