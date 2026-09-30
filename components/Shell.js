@@ -26,7 +26,7 @@ export default function Shell({ children }) {
   return (
     <AuthCtx.Provider value={{ role, authed: !!role, isAdmin: role === 'admin' }}>
       <header className="nav">
-        <Link href="/" className="brand">🏏 VAYUZ Cricket</Link>
+        <Link href="/" className="brand">🏏 VAYUZ Champions League - Convergence 11.0</Link>
         <nav>
           <Link href="/">Matches</Link>
           <Link href="/leaderboard">Table</Link>

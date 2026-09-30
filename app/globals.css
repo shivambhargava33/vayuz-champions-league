@@ -48,3 +48,6 @@ table.lb td:nth-child(2),table.lb th:nth-child(2){text-align:left;width:100%}
 table.lb th:first-child,table.lb td:first-child{text-align:left;color:var(--mut)}
 table.lb tr.top td:first-child{color:var(--g);font-weight:700}
 table.lb td.neg{color:var(--red)}
+.nav{flex-wrap:wrap;row-gap:.4rem}
+.brand{font-size:1rem;line-height:1.25}
+@media (max-width:520px){.brand{flex:1 1 100%}}
