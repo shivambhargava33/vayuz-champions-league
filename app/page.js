@@ -9,7 +9,7 @@ function score(balls, matchId, innings) {
   const rows = balls.filter((b) => b.match_id === matchId && b.innings === innings);
   return {
     runs: rows.reduce((a, b) => a + b.runs_off_bat + b.extra_runs, 0),
-    wkts: rows.filter((b) => b.wicket_type).length,
+    wkts: rows.filter((b) => b.wicket_type).length - rows.filter((b) => b.event === 'revive').length,
     legal: rows.filter((b) => b.is_legal).length,
     any: rows.length > 0,
   };

@@ -5,7 +5,7 @@ import { computeStandings, matchWinner } from '@/lib/standings';
 export const dynamic = 'force-dynamic';
 
 // Actions an umpire may perform; everything else is admin-only.
-const UMPIRE_ACTIONS = ['createMatch', 'startMatch', 'addBall', 'undoBall', 'startSecondInnings', 'finishMatch'];
+const UMPIRE_ACTIONS = ['createMatch', 'startMatch', 'addEvent', 'addBall', 'undoBall', 'startSecondInnings', 'finishMatch'];
 
 const clean = (s) => String(s || '').trim().slice(0, 60);
 const int = (n, d = 0) => (Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : d);
@@ -114,17 +114,34 @@ export async function POST(request) {
         if (me) throw me;
         if (m.status !== 'live') return fail('Match is finished');
         const b = body.ball || {};
-        if (!b.striker_id || !b.non_striker_id || !b.bowler_id) return fail('Select striker, non-striker and bowler');
+        if (!b.striker_id || !b.bowler_id) return fail('Select striker and bowler');
         const { data: last } = await sb.from('balls').select('seq').eq('match_id', m.id).eq('innings', m.current_innings)
           .order('seq', { ascending: false }).limit(1);
         const seq = (last?.[0]?.seq ?? 0) + 1;
         const extra_type = ['wide', 'noball', 'bye', 'legbye'].includes(b.extra_type) ? b.extra_type : null;
         check(await sb.from('balls').insert({
           match_id: m.id, innings: m.current_innings, seq,
-          striker_id: b.striker_id, non_striker_id: b.non_striker_id, bowler_id: b.bowler_id,
+          striker_id: b.striker_id, non_striker_id: b.non_striker_id || null, bowler_id: b.bowler_id,
           runs_off_bat: Math.max(0, int(b.runs_off_bat)), extra_type, extra_runs: Math.max(0, int(b.extra_runs)),
           is_legal: extra_type !== 'wide' && extra_type !== 'noball',
           wicket_type: b.wicket_type || null, out_player_id: b.wicket_type ? b.out_player_id : null,
+        }));
+        return ok();
+      }
+      case 'addEvent': {
+        // -5 runs penalty, or reviving a dismissed batter (optionally costing 5 runs)
+        const { data: m, error: me } = await sb.from('matches').select('current_innings,status').eq('id', body.match_id).single();
+        if (me) throw me;
+        if (m.status !== 'live') return fail('Match is not live');
+        if (!['penalty', 'revive'].includes(body.event)) return fail('Unknown event');
+        if (body.event === 'revive' && !body.player_id) return fail('Pick the batter to revive');
+        const { data: last } = await sb.from('balls').select('seq').eq('match_id', body.match_id).eq('innings', m.current_innings)
+          .order('seq', { ascending: false }).limit(1);
+        const cost = body.event === 'penalty' || body.deduct ? -5 : 0;
+        check(await sb.from('balls').insert({
+          match_id: body.match_id, innings: m.current_innings, seq: (last?.[0]?.seq ?? 0) + 1,
+          runs_off_bat: 0, extra_runs: cost, is_legal: false, event: body.event,
+          out_player_id: body.event === 'revive' ? body.player_id : null,
         }));
         return ok();
       }

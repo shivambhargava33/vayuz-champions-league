@@ -46,6 +46,7 @@ create table balls (
   is_legal boolean not null,
   wicket_type text,
   out_player_id uuid,
+  event text check (event in ('penalty','revive')),
   created_at timestamptz default now(),
   unique (match_id, innings, seq)
 );

@@ -11,7 +11,7 @@ export async function GET() {
       sb.from('teams').select('*').order('name'),
       sb.from('players').select('*').order('created_at'),
       sb.from('matches').select('*').order('created_at', { ascending: false }),
-      sb.from('balls').select('match_id,innings,runs_off_bat,extra_runs,is_legal,wicket_type'),
+      sb.from('balls').select('match_id,innings,runs_off_bat,extra_runs,is_legal,wicket_type,event'),
     ]);
     const err = teams.error || players.error || matches.error || balls.error;
     if (err) throw err;

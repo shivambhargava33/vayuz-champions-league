@@ -20,6 +20,7 @@ export default function MatchPage() {
   const [showCard, setShowCard] = useState(false);
   const [sf, setSf] = useState({}); // start-match form for scheduled fixtures
   const [winnerPick, setWinnerPick] = useState('');
+  const [rv, setRv] = useState(null); // revive-batter dialog
   const [swapped, setSwapped] = useState(false); // umpire override: flip strike before the next ball
 
   const load = useCallback(() => api(`/api/match?id=${id}`).then((d) => { setData(d); setError(''); }).catch((e) => setError(e.message)), [id]);
@@ -88,14 +89,15 @@ export default function MatchPage() {
   const live = m.status === 'live';
   const curBalls = balls.filter((x) => x.innings === n);
   const lastBall = curBalls[curBalls.length - 1];
-  const chipClass = (x) => (x.wicket_type ? 'w' : x.runs_off_bat >= 4 ? 'b' : x.extra_type ? 'x' : '');
+  const chipClass = (x) => (x.event ? 'x' : x.wicket_type ? 'w' : x.runs_off_bat >= 4 ? 'b' : x.extra_type ? 'x' : '');
   const canScore = authed && live && !cur.complete;
 
   let striker = cur.striker || pick.striker || null;
   let nonStriker = cur.nonStriker || pick.nonStriker || null;
   if (swapped && striker && nonStriker) [striker, nonStriker] = [nonStriker, striker];
   const bowler = cur.bowler || pick.bowler || null;
-  const ready = striker && nonStriker && bowler;
+  const lastMan = cur.wickets >= squad(batTeam) - 1; // only one batter left: he bats alone
+  const ready = striker && bowler && (nonStriker || lastMan);
 
   const onField = new Set([striker, nonStriker].filter(Boolean));
   const batOptions = teamPlayers(batTeam).filter((p) => !cur.batters[p.id]?.out && !onField.has(p.id));
@@ -112,7 +114,7 @@ export default function MatchPage() {
 
   async function score(runs, wicket) {
     if (!ready || busy) return;
-    const ball = { striker_id: striker, non_striker_id: nonStriker, bowler_id: bowler, runs_off_bat: 0, extra_runs: 0, extra_type: mode === 'none' ? null : mode };
+    const ball = { striker_id: striker, non_striker_id: nonStriker || null, bowler_id: bowler, runs_off_bat: 0, extra_runs: 0, extra_type: mode === 'none' ? null : mode };
     if (mode === 'wide') ball.extra_runs = 1 + runs;
     else if (mode === 'noball') { ball.extra_runs = 1; ball.runs_off_bat = runs; }
     else if (mode === 'bye' || mode === 'legbye') ball.extra_runs = runs;
@@ -222,6 +224,14 @@ export default function MatchPage() {
       {error && <p className="error">{error}</p>}
 
       {/* Innings/match transitions */}
+      {/* Special: -5 penalty, revive a batter */}
+      {authed && live && (
+        <div className="row">
+          <button className="btn grow" disabled={busy} onClick={() => confirm(`Deduct 5 runs from ${tName(batTeam)}?`) && act({ action: 'addEvent', match_id: m.id, event: 'penalty' })}>−5 runs</button>
+          <button className="btn grow" disabled={busy || !Object.values(cur.batters).some((x) => x.out) || (cur.striker && cur.nonStriker)} onClick={() => setRv({ player: '', deduct: true })}>Revive batter</button>
+        </div>
+      )}
+
       {authed && live && n === 1 && i1.complete && (
         <div className="card stack">
           <b>Innings complete: {i1.runs}/{i1.wickets}. Target {i1.runs + 1}.</b>
@@ -243,7 +253,7 @@ export default function MatchPage() {
             <>
               <b>Set players</b>
               {!striker && <Sel label={cur.wickets ? 'New batter' : 'Striker'} value={pick.striker} onChange={(v) => setPick({ ...pick, striker: v })} options={batOptions.filter((p) => p.id !== nonStriker)} />}
-              {!nonStriker && <Sel label={cur.wickets && !nonStriker ? 'New batter' : 'Non-striker'} value={pick.nonStriker} onChange={(v) => setPick({ ...pick, nonStriker: v })} options={batOptions.filter((p) => p.id !== striker)} />}
+              {!nonStriker && !lastMan && <Sel label={cur.wickets && !nonStriker ? 'New batter' : 'Non-striker'} value={pick.nonStriker} onChange={(v) => setPick({ ...pick, nonStriker: v })} options={batOptions.filter((p) => p.id !== striker)} />}
               {!bowler && <Sel label="Bowler" value={pick.bowler} onChange={(v) => setPick({ ...pick, bowler: v })} options={bowlOptions} />}
             </>
           )}
@@ -295,7 +305,7 @@ export default function MatchPage() {
                 ); })}
               </tbody>
             </table>
-            <p className="small muted">Extras {s.totalExtras} (wd {s.extras.wide}, nb {s.extras.noball}, b {s.extras.bye}, lb {s.extras.legbye})</p>
+            <p className="small muted">{s.penalties ? `Penalties ${s.penalties} · ` : ''}Extras {s.totalExtras} (wd {s.extras.wide}, nb {s.extras.noball}, b {s.extras.bye}, lb {s.extras.legbye})</p>
             <table>
               <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead>
               <tbody>
@@ -308,6 +318,29 @@ export default function MatchPage() {
           </section>
         );
       })}
+
+      {/* Revive dialog */}
+      {rv && (
+        <div className="modal-bg" onClick={() => setRv(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Revive batter</h3>
+            <label>Who comes back?
+              <select value={rv.player} onChange={(e) => setRv({ ...rv, player: e.target.value })}>
+                <option value="">Select…</option>
+                {Object.values(cur.batters).filter((x) => x.out).map((x) => <option key={x.id} value={x.id}>{pName(x.id)}</option>)}
+              </select>
+            </label>
+            <label className="row" style={{ flexDirection: 'row', alignItems: 'center', gap: '.5rem' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={rv.deduct} onChange={(e) => setRv({ ...rv, deduct: e.target.checked })} />
+              Deduct 5 runs from {tName(batTeam)}
+            </label>
+            <div className="row">
+              <button className="btn grow" onClick={() => setRv(null)}>Cancel</button>
+              <button className="btn primary grow" disabled={busy || !rv.player} onClick={async () => { await act({ action: 'addEvent', match_id: m.id, event: 'revive', player_id: rv.player, deduct: rv.deduct }); setRv(null); }}>Revive</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Wicket dialog */}
       {wk && (
@@ -323,7 +356,7 @@ export default function MatchPage() {
               <label>Who is out
                 <select value={wk.out} onChange={(e) => setWk({ ...wk, out: e.target.value })}>
                   <option value={striker}>{pName(striker)} (striker)</option>
-                  <option value={nonStriker}>{pName(nonStriker)} (non-striker)</option>
+                  {nonStriker && <option value={nonStriker}>{pName(nonStriker)} (non-striker)</option>}
                 </select>
               </label>
             )}
