@@ -8,7 +8,7 @@ export default function NewMatch() {
   const { authed } = useAuth();
   const router = useRouter();
   const [data, setData] = useState(null);
-  const [f, setF] = useState({ team_a: '', team_b: '', batting_first: '', overs: 6, players_per_side: 6, umpire: '' });
+  const [f, setF] = useState({ team_a: '', team_b: '', batting_first: '', overs: 8, players_per_side: 6, umpire: '' });
   const [error, setError] = useState('');
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
 

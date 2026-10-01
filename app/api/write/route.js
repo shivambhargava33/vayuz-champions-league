@@ -91,7 +91,7 @@ export async function POST(request) {
           };
           const [a1, a2] = top('A'), [b1, b2] = top('B');
           if (!a1 || !a2 || !b1 || !b2) return fail('Groups are not set up');
-          const base = { overs: 6, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'semi' };
+          const base = { overs: 8, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'semi' };
           check(await sb.from('matches').insert([
             { ...base, team_a: a1, team_b: b2, match_no: 13, play_order: 13 },
             { ...base, team_a: b1, team_b: a2, match_no: 14, play_order: 14 },
@@ -104,7 +104,7 @@ export async function POST(request) {
           if (semis.length < 2 || semis.some((m) => m.status !== 'completed')) return fail('Both semifinals must be completed');
           const w = semis.map((m) => matchWinner(m, balls.data));
           if (w.some((x) => !x)) return fail('A semifinal has no winner (tie): re-finish it and pick the tie-breaker winner');
-          check(await sb.from('matches').insert({ overs: 6, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'final', team_a: w[0], team_b: w[1], match_no: 15, play_order: 15 }));
+          check(await sb.from('matches').insert({ overs: 8, players_per_side: 6, balls_per_over: 3, status: 'scheduled', stage: 'final', team_a: w[0], team_b: w[1], match_no: 15, play_order: 15 }));
           return ok();
         }
         return fail('Unknown stage');
